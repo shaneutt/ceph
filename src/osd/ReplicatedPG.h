@@ -822,6 +822,7 @@ protected:
   friend struct C_OnPushCommit;
 
   // projected object info
+  map<hobject_t, ObjectContextRef> pinned_object_contexts;
   SharedPtrRegistry<hobject_t, ObjectContext> object_contexts;
   // map from oid.snapdir() to SnapSetContext *
   map<hobject_t, SnapSetContext*> snapset_contexts;

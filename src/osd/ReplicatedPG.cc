@@ -4716,6 +4716,14 @@ void ReplicatedPG::make_writeable(OpContext *ctx)
     object_info_t *snap_oi;
     if (is_primary()) {
       ctx->clone_obc = object_contexts.lookup_or_create(static_snap_oi.soid);
+      if (g_conf->osd_debug_enable_pin_obc &&
+	  ((static_cast<double>(rand() % 1000) / 1000) <
+	   g_conf->osd_debug_pin_obc_probability)) {
+	dout(1) << __func__ << ": pinning obc for "
+		<< static_snap_oi.soid << dendl;
+	pinned_object_contexts.insert(
+	  make_pair(static_snap_oi.soid, ctx->clone_obc));
+      }
       ctx->clone_obc->destructor_callback = new C_PG_ObjectContext(this, ctx->clone_obc.get());
       ctx->clone_obc->obs.oi = static_snap_oi;
       ctx->clone_obc->obs.exists = true;
@@ -6748,6 +6756,12 @@ ObjectContextRef ReplicatedPG::create_object_context(const object_info_t& oi,
 						     SnapSetContext *ssc)
 {
   ObjectContextRef obc(object_contexts.lookup_or_create(oi.soid));
+  if (g_conf->osd_debug_enable_pin_obc &&
+      ((static_cast<double>(rand() % 1000) / 1000) <
+       g_conf->osd_debug_pin_obc_probability)) {
+    dout(1) << __func__ << ": pinning obc for " << oi.soid << dendl;
+    pinned_object_contexts.insert(make_pair(oi.soid, obc));
+  }
   assert(obc->destructor_callback == NULL);
   obc->destructor_callback = new C_PG_ObjectContext(this, obc.get());  
   obc->obs.oi = oi;
@@ -6833,6 +6847,7 @@ ObjectContextRef ReplicatedPG::get_object_context(const hobject_t& soid,
 
 void ReplicatedPG::context_registry_on_change()
 {
+  pinned_object_contexts.clear();
   pair<hobject_t, ObjectContextRef> i;
   while (object_contexts.get_next(i.first, &i)) {
     ObjectContextRef obc(i.second);
