@@ -10763,7 +10763,16 @@ bool ReplicatedPG::agent_maybe_flush(ObjectContextRef& obc)
   ctx->at_version = get_next_version();
   ctx->on_finish = new C_AgentFlushStartStop(this, obc->obs.oi.soid);
 
-  start_flush(ctx, false);
+  int result = start_flush(ctx, false);
+  if (result != -EINPROGRESS) {
+    dout(10) << __func__ << " start_flush() failed " << obc->obs.oi
+      << " with " << result << dendl;
+    osd->logger->inc(l_osd_agent_skip);
+    // XXX: Does it matter what error is passed here?
+    if (result != -ECANCELED)
+      close_op_ctx(ctx, result);
+    return false;
+  }
 
   osd->logger->inc(l_osd_agent_flush);
   return true;
