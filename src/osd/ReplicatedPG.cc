@@ -7097,6 +7097,8 @@ SnapSetContext *ReplicatedPG::create_snapset_context(const hobject_t& oid)
   SnapSetContext *ssc = new SnapSetContext(oid.get_snapdir());
   _register_snapset_context(ssc);
   ssc->ref++;
+  dout(10) << __func__ << ": ssc " << ssc << " oid " << oid.get_snapdir()
+	   << " " << ssc->ref - 1 << " -> " << ssc->ref << dendl;
   return ssc;
 }
 
@@ -7134,6 +7136,8 @@ SnapSetContext *ReplicatedPG::get_snapset_context(
   }
   assert(ssc);
   ssc->ref++;
+  dout(10) << __func__ << ": ssc " << ssc << " oid " << oid.get_snapdir()
+	   << " " << ssc->ref - 1 << " -> " << ssc->ref << dendl;
   return ssc;
 }
 
@@ -7141,6 +7145,8 @@ void ReplicatedPG::put_snapset_context(SnapSetContext *ssc)
 {
   Mutex::Locker l(snapset_contexts_lock);
   --ssc->ref;
+  dout(10) << __func__ << ": ssc " << ssc << " oid " << ssc->oid
+	   << " " << ssc->ref - 1 << " -> " << ssc->ref << dendl;
   if (ssc->ref == 0) {
     if (ssc->registered)
       snapset_contexts.erase(ssc->oid);
@@ -8901,6 +8907,7 @@ void ReplicatedPG::on_flushed()
       derr << "on_flushed: object " << i.first << " obc still alive" << dendl;
     }
     assert(object_contexts.empty());
+    assert(snapset_contexts.empty());
   }
   pgbackend->on_flushed();
 }
@@ -8949,6 +8956,22 @@ void ReplicatedPG::on_shutdown()
 
 void ReplicatedPG::on_activate()
 {
+  {
+    pair<hobject_t, ObjectContextRef> i;
+    while (object_contexts.get_next(i.first, &i)) {
+      derr << __func__ << ": object " << i.first << " obc still alive" << dendl;
+    }
+  }
+  assert(object_contexts.empty());
+  for (map<hobject_t, SnapSetContext*>::iterator i = snapset_contexts.begin();
+       i != snapset_contexts.end();
+       ++i) {
+    derr << __func__ << ": object " << i->first << " snapset still alive "
+	 << "ref " << i->second->ref
+	 << dendl;
+  }
+  assert(snapset_contexts.empty());
+
   // all clean?
   if (needs_recovery()) {
     dout(10) << "activate not all replicas are up-to-date, queueing recovery" << dendl;
